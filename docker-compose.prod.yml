@@ -2,10 +2,9 @@ services:
   traefik:
     volumes:
       - ./traefik/traefik.prod.yml:/etc/traefik/traefik.yml:ro
-      - ./letsencrypt:/letsencrypt
+      - ./certs:/etc/traefik/certs:ro
     command:
       - "--configfile=/etc/traefik/traefik.yml"
-      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
     ports:
       - "80:80"
       - "443:443"
@@ -13,10 +12,10 @@ services:
   landingpage:
     labels:
       traefik.http.routers.landingpage.entrypoints: "websecure"
-      traefik.http.routers.landingpage.tls.certresolver: "letsencrypt"
+      traefik.http.routers.landingpage.tls: "true"
       traefik.http.routers.landingpage-www.rule: "Host(`www.${DOMAIN}`)"
       traefik.http.routers.landingpage-www.entrypoints: "websecure"
-      traefik.http.routers.landingpage-www.tls.certresolver: "letsencrypt"
+      traefik.http.routers.landingpage-www.tls: "true"
       traefik.http.routers.landingpage-www.middlewares: "www-redirect"
       traefik.http.middlewares.www-redirect.redirectregex.regex: "^https?://www\\.(.+)"
       traefik.http.middlewares.www-redirect.redirectregex.replacement: "https://$${1}"
@@ -25,4 +24,4 @@ services:
   headspace:
     labels:
       traefik.http.routers.headspace.entrypoints: "websecure"
-      traefik.http.routers.headspace.tls.certresolver: "letsencrypt"
+      traefik.http.routers.headspace.tls: "true"

@@ -14,15 +14,17 @@ minimale Platzhalter-Container (`nginx:alpine` + statisches HTML unter
 ```
 docker-compose.yml       Basis: Netzwerk, Traefik, Platzhalter-Services
 docker-compose.dev.yml   Override für lokale Entwicklung (HTTP, *.localhost, Dashboard offen)
-docker-compose.prod.yml  Override für Produktion (HTTPS via Let's Encrypt, www-Redirect)
+docker-compose.prod.yml  Override für Produktion (HTTPS via Datei-Zertifikat, www-Redirect)
 traefik/
   traefik.dev.yml        Statische Traefik-Config für dev
   traefik.prod.yml       Statische Traefik-Config für prod
-  dynamic/                Dynamische Config (Middlewares), von Traefik live neu geladen
+  dynamic/
+    middlewares.yml       Beispiel-Middlewares (compress, security-headers)
+    tls.yml                Verweist auf certs/fullchain.pem + certs/privkey.pem
 placeholders/
   landingpage/            Platzhalter für oneinchapps.com
   headspace/              Platzhalter für headspace.oneinchapps.com
-letsencrypt/              ACME-Zertifikatsspeicher (nur prod, nicht in git)
+certs/                    Zertifikat + Private Key für prod (nicht in git)
 ```
 
 ## Lokale Entwicklung
@@ -52,29 +54,81 @@ macOS nur ein Symlink auf dem Host und lässt sich nicht 1:1 in den Container mo
 Auf einem Linux-Server (Prod) ist `/var/run/docker.sock` ein echter Socket, daher bleibt
 `docker-compose.prod.yml` beim Standardpfad.
 
-## Produktion
+## Produktion (IONOS VPS, eigenes Wildcard-Zertifikat)
 
-Voraussetzungen:
+`docker-compose.prod.yml` nutzt **kein** Let's Encrypt/ACME, sondern ein
+gekauftes Zertifikat als Datei (z. B. IONOS-SSL-Paket). Traefik liest es über
+`traefik/dynamic/tls.yml` aus `certs/fullchain.pem` + `certs/privkey.pem` und
+setzt es als Default-Zertifikat für den `websecure`-Entrypoint — damit sind
+`oneinchapps.com`, `www.oneinchapps.com`, `headspace.oneinchapps.com` und
+alle künftigen `*.oneinchapps.com`-Subdomains automatisch abgedeckt, solange
+das Zertifikat ein Wildcard ist.
 
-1. Ein Server mit Docker, öffentlich unter einer IP erreichbar (Ports 80/443 offen).
-2. DNS A-Records, die auf diesen Server zeigen:
-   - `oneinchapps.com`
-   - `www.oneinchapps.com`
-   - `headspace.oneinchapps.com`
-3. Eine `.env.prod` (aus dem Template kopieren und anpassen):
+### 1. DNS einrichten
 
-   ```bash
-   cp .env.prod.example .env.prod
-   ```
+Im DNS-Management der Domain (IONOS-Kundencenter oder wo `oneinchapps.com`
+registriert ist) A-Records (und falls verfügbar AAAA für IPv6) auf die
+VPS-IP anlegen:
 
-4. ACME-Storage vorbereiten (einmalig, korrekte Rechte für Let's Encrypt):
+- `oneinchapps.com`
+- `www.oneinchapps.com`
+- `headspace.oneinchapps.com`
+- optional gleich `*.oneinchapps.com` als Wildcard-Record, damit künftige
+  Produkt-Subdomains ohne weiteren DNS-Eintrag funktionieren
 
-   ```bash
-   touch letsencrypt/acme.json
-   chmod 600 letsencrypt/acme.json
-   ```
+DNS-Propagation kann bis zu ein paar Stunden dauern — vor dem nächsten
+Schritt mit `dig oneinchapps.com` bzw. `dig headspace.oneinchapps.com`
+prüfen, ob die IP schon ankommt.
 
-Start:
+### 2. Firewall auf dem VPS
+
+Ports 80 und 443 müssen von außen erreichbar sein — sowohl in der
+IONOS-Firewall/Security-Group (falls im Cloud Panel konfiguriert) als auch
+in einer lokalen Firewall auf dem Server (z. B. `ufw allow 80,443/tcp`).
+
+### 3. Repo + Zertifikat auf den Server bringen
+
+Da dieses Repo bislang nur lokal existiert (kein Git-Remote), am einfachsten
+per `rsync` übertragen (aus dem lokalen Repo-Verzeichnis heraus, `.git`
+weglassen):
+
+```bash
+rsync -avz --exclude '.git' ./ user@<vps-ip>:/opt/oneinchapps/
+```
+
+Die drei Dateien aus dem IONOS-SSL-Paket (Zertifikat, Private Key,
+CA-Bundle/Intermediate-Zertifikate) auf den Server kopieren, z. B. nach
+`/opt/oneinchapps/certs/`:
+
+```bash
+scp domain.crt privkey.key ca-bundle.crt user@<vps-ip>:/opt/oneinchapps/certs/
+```
+
+Auf dem Server Zertifikat + CA-Bundle zu einer Fullchain zusammenführen
+(Reihenfolge: erst das eigene Zertifikat, danach die Intermediates) und
+Rechte setzen:
+
+```bash
+ssh user@<vps-ip>
+cd /opt/oneinchapps/certs
+cat domain.crt ca-bundle.crt > fullchain.pem
+mv privkey.key privkey.pem
+chmod 600 privkey.pem
+chmod 644 fullchain.pem
+rm domain.crt ca-bundle.crt
+```
+
+`certs/` ist in `.gitignore` — Zertifikat und Key landen nie im Git-Repo.
+
+### 4. `.env.prod` anlegen
+
+```bash
+cd /opt/oneinchapps
+cp .env.prod.example .env.prod
+# DOMAIN=oneinchapps.com steht schon drin, bei Bedarf anpassen
+```
+
+### 5. Starten
 
 ```bash
 docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml up -d
@@ -83,18 +137,34 @@ docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod
 Dabei passiert:
 
 - HTTP (Port 80) wird permanent auf HTTPS umgeleitet.
-- Traefik holt automatisch Let's Encrypt-Zertifikate per HTTP-01-Challenge.
+- `websecure` (Port 443) terminiert TLS mit dem Zertifikat aus `certs/`.
 - `www.oneinchapps.com` wird permanent auf `oneinchapps.com` umgeleitet.
-- `headspace.oneinchapps.com` bekommt ein eigenes Zertifikat und Routing.
+- `headspace.oneinchapps.com` läuft über dasselbe Wildcard-Zertifikat.
 
-**Hinweis:** Das Traefik-Dashboard ist in `docker-compose.prod.yml` bewusst
-*nicht* nach außen exponiert (kein Router/Port dafür). Falls gewünscht, muss es
-später explizit mit Basic-Auth-Middleware und eigenem Router abgesichert werden.
+### 6. Prüfen
+
+```bash
+curl -vI https://oneinchapps.com/ 2>&1 | grep -i "subject\|HTTP/"
+curl -vI https://headspace.oneinchapps.com/ 2>&1 | grep -i "subject\|HTTP/"
+```
+
+**Hinweis Zertifikats-Laufzeit:** Anders als bei Let's Encrypt gibt es hier
+*keine* automatische Erneuerung. Gekaufte Zertifikate laufen meist 1 Jahr —
+rechtzeitig vor Ablauf im IONOS-Kundencenter erneuern und die neuen Dateien
+per Schritt 3 austauschen (`docker compose ... restart traefik` danach).
+
+**Hinweis Dashboard:** Das Traefik-Dashboard ist in `docker-compose.prod.yml`
+bewusst *nicht* nach außen exponiert (kein Router/Port dafür). Falls
+gewünscht, muss es später explizit mit Basic-Auth-Middleware und eigenem
+Router abgesichert werden.
 
 ## Neue Subdomain / neues Produkt hinzufügen
 
 1. Neuen Service in `docker-compose.yml` mit eigenen Traefik-Labels ergänzen
    (`Host(\`produktname.${DOMAIN}\`)`, analog zu `landingpage`/`headspace`).
 2. Für Prod-TLS in `docker-compose.prod.yml` die passenden
-   `entrypoints`/`tls.certresolver`-Labels für den neuen Service ergänzen.
-3. DNS-Record für die neue Subdomain anlegen.
+   `entrypoints`/`tls`-Labels für den neuen Service ergänzen (siehe
+   `headspace` als Vorlage) — dank Wildcard-Zertifikat reicht das, ohne
+   dass ein neues Zertifikat besorgt werden muss.
+3. DNS-Record für die neue Subdomain anlegen (entfällt, falls bereits ein
+   `*.oneinchapps.com`-Wildcard-Record existiert).

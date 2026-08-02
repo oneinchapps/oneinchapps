@@ -1,4 +1,4 @@
 .env.prod
-letsencrypt/*
-!letsencrypt/.gitkeep
+certs/*
+!certs/.gitkeep
 .DS_Store
