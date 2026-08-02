@@ -1,0 +1,12 @@
+services:
+  traefik:
+    volumes:
+      # Docker Desktop for Mac exposes the daemon socket under $HOME, not /var/run/docker.sock
+      # (that path is a symlink on the host and doesn't resolve inside the container).
+      - ${HOME}/.docker/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/traefik.dev.yml:/etc/traefik/traefik.yml:ro
+    command:
+      - "--configfile=/etc/traefik/traefik.yml"
+    ports:
+      - "80:80"
+      - "8080:8080" # Traefik Dashboard (nur lokal, ohne Auth)

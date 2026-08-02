@@ -1,0 +1,4 @@
+.env.prod
+letsencrypt/*
+!letsencrypt/.gitkeep
+.DS_Store

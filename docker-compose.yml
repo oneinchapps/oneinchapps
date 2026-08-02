@@ -1,0 +1,39 @@
+networks:
+  oneinchapps:
+    name: oneinchapps
+
+services:
+  traefik:
+    image: traefik:v3.7
+    restart: unless-stopped
+    networks:
+      - oneinchapps
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/dynamic:/etc/traefik/dynamic:ro
+
+  landingpage:
+    image: nginx:alpine
+    restart: unless-stopped
+    networks:
+      - oneinchapps
+    volumes:
+      - ./placeholders/landingpage:/usr/share/nginx/html:ro
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.landingpage.rule: "Host(`${DOMAIN}`)"
+      traefik.http.routers.landingpage.entrypoints: "web"
+      traefik.http.services.landingpage.loadbalancer.server.port: "80"
+
+  headspace:
+    image: nginx:alpine
+    restart: unless-stopped
+    networks:
+      - oneinchapps
+    volumes:
+      - ./placeholders/headspace:/usr/share/nginx/html:ro
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.headspace.rule: "Host(`headspace.${DOMAIN}`)"
+      traefik.http.routers.headspace.entrypoints: "web"
+      traefik.http.services.headspace.loadbalancer.server.port: "80"
