@@ -1,10 +1,10 @@
 # oneinchapps — Infrastruktur
 
 Traefik-Reverse-Proxy-Setup für die oneinchapps-Produktwebsite (`oneinchapps.com`) und
-deren Produkt-Subdomains (z. B. `headspace.oneinchapps.com`).
+deren Produkt-Subdomains (z. B. `headbase.oneinchapps.com`).
 
 Dieses Repo enthält **nur die Infrastruktur** (Traefik + Routing). Die eigentlichen
-Produkt-Apps (Landingpage, Headspace, ...) leben in eigenen Repos und werden hier
+Produkt-Apps (Landingpage, Headbase, ...) leben in eigenen Repos und werden hier
 später als eigene Docker-Services eingebunden. Aktuell laufen an ihrer Stelle
 minimale Platzhalter-Container (`nginx:alpine` + statisches HTML unter
 [placeholders/](placeholders/)), damit das Routing sofort testbar ist.
@@ -23,7 +23,7 @@ traefik/
     tls.yml                Verweist auf certs/fullchain.pem + certs/privkey.pem
 placeholders/
   landingpage/            Platzhalter für oneinchapps.com
-  headspace/              Platzhalter für headspace.oneinchapps.com
+  headbase/              Platzhalter für headbase.oneinchapps.com
 certs/                    Zertifikat + Private Key für prod (nicht in git)
 ```
 
@@ -39,7 +39,7 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
 Danach erreichbar:
 
 - http://oneinchapps.localhost — Landingpage-Platzhalter
-- http://headspace.oneinchapps.localhost — Headspace-Platzhalter
+- http://headbase.oneinchapps.localhost — Headbase-Platzhalter
 - http://localhost:8080 — Traefik-Dashboard (ungesichert, nur lokal)
 
 Stoppen:
@@ -60,7 +60,7 @@ Auf einem Linux-Server (Prod) ist `/var/run/docker.sock` ein echter Socket, dahe
 gekauftes Zertifikat als Datei (z. B. IONOS-SSL-Paket). Traefik liest es über
 `traefik/dynamic/tls.yml` aus `certs/fullchain.pem` + `certs/privkey.pem` und
 setzt es als Default-Zertifikat für den `websecure`-Entrypoint — damit sind
-`oneinchapps.com`, `www.oneinchapps.com`, `headspace.oneinchapps.com` und
+`oneinchapps.com`, `www.oneinchapps.com`, `headbase.oneinchapps.com` und
 alle künftigen `*.oneinchapps.com`-Subdomains automatisch abgedeckt, solange
 das Zertifikat ein Wildcard ist.
 
@@ -72,12 +72,12 @@ VPS-IP anlegen:
 
 - `oneinchapps.com`
 - `www.oneinchapps.com`
-- `headspace.oneinchapps.com`
+- `headbase.oneinchapps.com`
 - optional gleich `*.oneinchapps.com` als Wildcard-Record, damit künftige
   Produkt-Subdomains ohne weiteren DNS-Eintrag funktionieren
 
 DNS-Propagation kann bis zu ein paar Stunden dauern — vor dem nächsten
-Schritt mit `dig oneinchapps.com` bzw. `dig headspace.oneinchapps.com`
+Schritt mit `dig oneinchapps.com` bzw. `dig headbase.oneinchapps.com`
 prüfen, ob die IP schon ankommt.
 
 ### 2. Firewall auf dem VPS
@@ -139,13 +139,13 @@ Dabei passiert:
 - HTTP (Port 80) wird permanent auf HTTPS umgeleitet.
 - `websecure` (Port 443) terminiert TLS mit dem Zertifikat aus `certs/`.
 - `www.oneinchapps.com` wird permanent auf `oneinchapps.com` umgeleitet.
-- `headspace.oneinchapps.com` läuft über dasselbe Wildcard-Zertifikat.
+- `headbase.oneinchapps.com` läuft über dasselbe Wildcard-Zertifikat.
 
 ### 6. Prüfen
 
 ```bash
 curl -vI https://oneinchapps.com/ 2>&1 | grep -i "subject\|HTTP/"
-curl -vI https://headspace.oneinchapps.com/ 2>&1 | grep -i "subject\|HTTP/"
+curl -vI https://headbase.oneinchapps.com/ 2>&1 | grep -i "subject\|HTTP/"
 ```
 
 **Hinweis Zertifikats-Laufzeit:** Anders als bei Let's Encrypt gibt es hier
@@ -161,10 +161,10 @@ Router abgesichert werden.
 ## Neue Subdomain / neues Produkt hinzufügen
 
 1. Neuen Service in `docker-compose.yml` mit eigenen Traefik-Labels ergänzen
-   (`Host(\`produktname.${DOMAIN}\`)`, analog zu `landingpage`/`headspace`).
+   (`Host(\`produktname.${DOMAIN}\`)`, analog zu `landingpage`/`headbase`).
 2. Für Prod-TLS in `docker-compose.prod.yml` die passenden
    `entrypoints`/`tls`-Labels für den neuen Service ergänzen (siehe
-   `headspace` als Vorlage) — dank Wildcard-Zertifikat reicht das, ohne
+   `headbase` als Vorlage) — dank Wildcard-Zertifikat reicht das, ohne
    dass ein neues Zertifikat besorgt werden muss.
 3. DNS-Record für die neue Subdomain anlegen (entfällt, falls bereits ein
    `*.oneinchapps.com`-Wildcard-Record existiert).

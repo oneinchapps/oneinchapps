@@ -21,7 +21,7 @@ services:
       traefik.http.middlewares.www-redirect.redirectregex.replacement: "https://$${1}"
       traefik.http.middlewares.www-redirect.redirectregex.permanent: "true"
 
-  headspace:
+  headbase:
     labels:
-      traefik.http.routers.headspace.entrypoints: "websecure"
-      traefik.http.routers.headspace.tls: "true"
+      traefik.http.routers.headbase.entrypoints: "websecure"
+      traefik.http.routers.headbase.tls: "true"
