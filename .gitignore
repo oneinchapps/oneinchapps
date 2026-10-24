@@ -2,3 +2,4 @@
 certs/*
 !certs/.gitkeep
 .DS_Store
+CLAUDE.md
